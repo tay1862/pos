@@ -3,18 +3,19 @@ FROM node:20-alpine AS builder
 
 WORKDIR /usr/src/app
 
-# Copy root package.json and workspace configurations if any
+# Copy root package.json and workspace configurations
 COPY package.json package-lock.json ./
-# If you are using npm workspaces, this helps install dependencies correctly
 COPY apps/api/package.json ./apps/api/
+COPY packages/database ./packages/database/
 
-# Install dependencies (ignoring scripts to speed up and avoid errors)
-RUN npm ci --ignore-scripts
+# Install dependencies
+RUN npm ci
 
-# Copy the entire api app source and any shared libs if applicable
+# Generate Prisma client
+RUN npx prisma generate --schema=packages/database/prisma/schema.prisma
+
+# Copy the entire api app source
 COPY apps/api ./apps/api
-# If Prisma is used, copy prisma schema to generate client
-# COPY packages/prisma ./packages/prisma
 
 # Build the api project
 WORKDIR /usr/src/app/apps/api
@@ -25,16 +26,20 @@ FROM node:20-alpine
 
 WORKDIR /usr/src/app
 
-# Only copy what's necessary for production
-COPY --from=builder /usr/src/app/package*.json ./
-COPY --from=builder /usr/src/app/apps/api/package.json ./apps/api/
-COPY --from=builder /usr/src/app/apps/api/dist ./apps/api/dist
-# If you have Prisma, copy the generated client and schema
-# COPY --from=builder /usr/src/app/node_modules/.prisma ./node_modules/.prisma
-# COPY --from=builder /usr/src/app/packages/prisma ./packages/prisma
+# Copy package files
+COPY package.json package-lock.json ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/database/package.json ./packages/database/
 
 # Install ONLY production dependencies
-RUN npm ci --only=production --ignore-scripts
+RUN npm ci --only=production
+
+# Copy generated Prisma client from builder
+COPY --from=builder /usr/src/app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /usr/src/app/node_modules/@prisma/client ./node_modules/@prisma/client
+
+# Copy built application
+COPY --from=builder /usr/src/app/apps/api/dist ./apps/api/dist
 
 WORKDIR /usr/src/app/apps/api
 
