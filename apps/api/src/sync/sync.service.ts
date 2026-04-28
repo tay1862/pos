@@ -54,7 +54,7 @@ export class SyncService {
 
             if (existingSyncEvent) {
               // Already processed successfully, just return success so mobile marks as done
-              this.logger.log(\`Idempotency hit for \${idempotencyKey}. Skipping.\`);
+              this.logger.log(`Idempotency hit for ${idempotencyKey}. Skipping.`);
               return;
             }
 
@@ -65,11 +65,11 @@ export class SyncService {
 
             // Using Math.abs to account for float precision issues
             if (Math.abs(calculatedItemsTotal - orderTotal) > 0.05) {
-              throw new Error(\`Items total (\${calculatedItemsTotal}) does not match order total (\${orderTotal})\`);
+              throw new Error(`Items total (${calculatedItemsTotal}) does not match order total (${orderTotal})`);
             }
 
             if (Math.abs(paymentsTotal - orderTotal) > 0.05) {
-              throw new Error(\`Payments total (\${paymentsTotal}) does not match order total (\${orderTotal})\`);
+              throw new Error(`Payments total (${paymentsTotal}) does not match order total (${orderTotal})`);
             }
 
             // 3. Create Order
@@ -182,7 +182,7 @@ export class SyncService {
           successQueueIds.push(queueId);
 
         } catch (error: any) {
-          this.logger.error(\`Failed to process queueId \${queueId}: \${error.message}\`);
+          this.logger.error(`Failed to process queueId ${queueId}: ${error.message}`);
           failedQueueIds.push({ queueId, error: error.message });
         }
       }

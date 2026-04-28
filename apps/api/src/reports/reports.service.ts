@@ -1,6 +1,5 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
 
 type ReportOptions = {
   startDate?: string;
@@ -63,21 +62,29 @@ export class ReportsService {
     ]);
 
     const revenue = Number(ordersAgg._sum.total ?? 0);
-    // cost = sum(cost * quantity) – stored as weighted cost in cost field per item
-    // We approximate cost * qty from orderItem.cost (which is weighted cost per unit)
-    const costPerUnit = Number(itemsAgg._sum.cost ?? 0);
     const totalQty = Number(itemsAgg._sum.quantity ?? 0);
-    // Better: use raw query for sum(cost * quantity)
-    const costRaw = await this.prisma.$queryRaw<[{ total_cost: number }]>`
+
+    // Build raw query for cost
+    let query = `
       SELECT COALESCE(SUM(oi.cost * oi.quantity), 0) AS total_cost
       FROM order_items oi
       JOIN orders o ON o.id = oi."order_id"
-      WHERE o."store_id" = ${storeId}
+      WHERE o."store_id" = $1
         AND o."deleted_at" IS NULL
         AND o.status = 'PAID'
-        ${opts.startDate ? Prisma.sql`AND o."created_at" >= ${new Date(opts.startDate + 'T00:00:00Z')}` : Prisma.empty}
-        ${opts.endDate ? Prisma.sql`AND o."created_at" <= ${new Date(opts.endDate + 'T23:59:59Z')}` : Prisma.empty}
     `;
+    const params: any[] = [storeId];
+
+    if (opts.startDate) {
+      params.push(new Date(opts.startDate + 'T00:00:00Z'));
+      query += ` AND o."created_at" >= $${params.length}`;
+    }
+    if (opts.endDate) {
+      params.push(new Date(opts.endDate + 'T23:59:59Z'));
+      query += ` AND o."created_at" <= $${params.length}`;
+    }
+
+    const costRaw = (await this.prisma.$queryRawUnsafe(query, ...params)) as [{ total_cost: number }];
 
     const totalCost = Number(costRaw[0]?.total_cost ?? 0);
     const grossProfit = revenue - totalCost;
@@ -95,7 +102,8 @@ export class ReportsService {
   // ── Top Products ──────────────────────────────────────────────────────
   async getTopProducts(storeId: string, userId: string, opts: ReportOptions) {
     await this.verifyStoreAccess(storeId, userId);
-    const rows = await this.prisma.$queryRaw<any[]>`
+    
+    let query = `
       SELECT
         oi."product_id"                            AS "productId",
         oi.name,
@@ -105,37 +113,64 @@ export class ReportsService {
         COALESCE(SUM(oi.total) - SUM(oi.cost * oi.quantity),0)::float AS "grossProfit"
       FROM order_items oi
       JOIN orders o ON o.id = oi."order_id"
-      WHERE o."store_id" = ${storeId}
+      WHERE o."store_id" = $1
         AND o."deleted_at" IS NULL
         AND o.status = 'PAID'
-        ${opts.startDate ? Prisma.sql`AND o."created_at" >= ${new Date(opts.startDate + 'T00:00:00Z')}` : Prisma.empty}
-        ${opts.endDate ? Prisma.sql`AND o."created_at" <= ${new Date(opts.endDate + 'T23:59:59Z')}` : Prisma.empty}
+    `;
+    const params: any[] = [storeId];
+
+    if (opts.startDate) {
+      params.push(new Date(opts.startDate + 'T00:00:00Z'));
+      query += ` AND o."created_at" >= $${params.length}`;
+    }
+    if (opts.endDate) {
+      params.push(new Date(opts.endDate + 'T23:59:59Z'));
+      query += ` AND o."created_at" <= $${params.length}`;
+    }
+
+    query += `
       GROUP BY oi."product_id", oi.name
       ORDER BY "quantitySold" DESC
-      LIMIT ${opts.limit ?? 10}
+      LIMIT $${params.length + 1}
     `;
-    return rows;
+    params.push(opts.limit ?? 10);
+
+    return (await this.prisma.$queryRawUnsafe(query, ...params)) as any[];
   }
 
   // ── Payment Breakdown ─────────────────────────────────────────────────
   async getPaymentBreakdown(storeId: string, userId: string, opts: ReportOptions) {
     await this.verifyStoreAccess(storeId, userId);
-    const rows = await this.prisma.$queryRaw<any[]>`
+    
+    let query = `
       SELECT
         p.method,
         COUNT(*)::int                    AS count,
         COALESCE(SUM(p.amount),0)::float AS total
       FROM payments p
       JOIN orders o ON o.id = p."order_id"
-      WHERE o."store_id" = ${storeId}
+      WHERE o."store_id" = $1
         AND o."deleted_at" IS NULL
         AND o.status = 'PAID'
         AND p.status = 'COMPLETED'
-        ${opts.startDate ? Prisma.sql`AND o."created_at" >= ${new Date(opts.startDate + 'T00:00:00Z')}` : Prisma.empty}
-        ${opts.endDate ? Prisma.sql`AND o."created_at" <= ${new Date(opts.endDate + 'T23:59:59Z')}` : Prisma.empty}
+    `;
+    const params: any[] = [storeId];
+
+    if (opts.startDate) {
+      params.push(new Date(opts.startDate + 'T00:00:00Z'));
+      query += ` AND o."created_at" >= $${params.length}`;
+    }
+    if (opts.endDate) {
+      params.push(new Date(opts.endDate + 'T23:59:59Z'));
+      query += ` AND o."created_at" <= $${params.length}`;
+    }
+
+    query += `
       GROUP BY p.method
       ORDER BY total DESC
     `;
+
+    const rows = (await this.prisma.$queryRawUnsafe(query, ...params)) as any[];
 
     const grandTotal = rows.reduce((s, r) => s + r.total, 0);
     return rows.map(r => ({
@@ -147,7 +182,7 @@ export class ReportsService {
   // ── Monthly ───────────────────────────────────────────────────────────
   async getMonthlySummary(storeId: string, userId: string, year: number) {
     await this.verifyStoreAccess(storeId, userId);
-    return this.prisma.$queryRaw<any[]>`
+    const query = `
       SELECT
         TO_CHAR(o."created_at" AT TIME ZONE 'UTC', 'YYYY-MM') AS date,
         COUNT(DISTINCT o.id)::int                  AS "totalOrders",
@@ -157,31 +192,46 @@ export class ReportsService {
         COALESCE(SUM(oi.quantity),0)::int          AS "totalItemsSold"
       FROM orders o
       LEFT JOIN order_items oi ON oi."order_id" = o.id
-      WHERE o."store_id" = ${storeId}
+      WHERE o."store_id" = $1
         AND o."deleted_at" IS NULL
         AND o.status = 'PAID'
-        AND EXTRACT(YEAR FROM o."created_at" AT TIME ZONE 'UTC') = ${year}
+        AND EXTRACT(YEAR FROM o."created_at" AT TIME ZONE 'UTC') = $2
       GROUP BY TO_CHAR(o."created_at" AT TIME ZONE 'UTC', 'YYYY-MM')
       ORDER BY date ASC
     `;
+    return (await this.prisma.$queryRawUnsafe(query, storeId, year)) as any[];
   }
 
   // ── Daily Trend ───────────────────────────────────────────────────────
   async getDailyTrend(storeId: string, userId: string, opts: ReportOptions) {
     await this.verifyStoreAccess(storeId, userId);
-    return this.prisma.$queryRaw<any[]>`
+    
+    let query = `
       SELECT
         TO_CHAR(o."created_at" AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date,
         COALESCE(SUM(o.total),0)::float       AS revenue,
         COUNT(DISTINCT o.id)::int             AS orders
       FROM orders o
-      WHERE o."store_id" = ${storeId}
+      WHERE o."store_id" = $1
         AND o."deleted_at" IS NULL
         AND o.status = 'PAID'
-        ${opts.startDate ? Prisma.sql`AND o."created_at" >= ${new Date(opts.startDate + 'T00:00:00Z')}` : Prisma.empty}
-        ${opts.endDate ? Prisma.sql`AND o."created_at" <= ${new Date(opts.endDate + 'T23:59:59Z')}` : Prisma.empty}
+    `;
+    const params: any[] = [storeId];
+
+    if (opts.startDate) {
+      params.push(new Date(opts.startDate + 'T00:00:00Z'));
+      query += ` AND o."created_at" >= $${params.length}`;
+    }
+    if (opts.endDate) {
+      params.push(new Date(opts.endDate + 'T23:59:59Z'));
+      query += ` AND o."created_at" <= $${params.length}`;
+    }
+
+    query += `
       GROUP BY TO_CHAR(o."created_at" AT TIME ZONE 'UTC', 'YYYY-MM-DD')
       ORDER BY date ASC
     `;
+
+    return (await this.prisma.$queryRawUnsafe(query, ...params)) as any[];
   }
 }
