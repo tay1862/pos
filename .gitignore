@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Environment - NEVER commit secrets
+.env
+.env.local
+.env.production
+docker/.env
+
+# Build
+dist/
+build/
+.next/
+
+# Expo
+.expo/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma
+packages/database/prisma/migrations/
+
+# Docker volumes
+postgres_data/
+redis_data/
+docker/backups/
+
+# Logs
+*.log
+npm-debug.log*

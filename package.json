@@ -1,0 +1,19 @@
+{
+  "name": "my-pos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "POS System - Offline-first Point of Sale",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "api": "npm run dev --workspace=apps/api",
+    "mobile": "npm run start --workspace=apps/mobile",
+    "web": "npm run dev --workspace=apps/web-admin",
+    "db:generate": "npm run db:generate --workspace=packages/database",
+    "db:push": "npm run db:push --workspace=packages/database",
+    "db:migrate": "npm run db:migrate --workspace=packages/database",
+    "db:studio": "npm run db:studio --workspace=packages/database"
+  }
+}
