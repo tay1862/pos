@@ -14,6 +14,7 @@
     "db:generate": "npm run db:generate --workspace=packages/database",
     "db:push": "npm run db:push --workspace=packages/database",
     "db:migrate": "npm run db:migrate --workspace=packages/database",
-    "db:studio": "npm run db:studio --workspace=packages/database"
+    "db:studio": "npm run db:studio --workspace=packages/database",
+    "seed": "ts-node packages/database/prisma/seed.ts"
   }
 }
