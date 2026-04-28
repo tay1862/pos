@@ -219,6 +219,7 @@ model Ticket {
   staff       Staff?       @relation(fields: [staffId], references: [id])
   customer    Customer?    @relation(fields: [customerId], references: [id])
   items       TicketItem[]
+  orders      Order[]
 
   @@index([storeId, status])
   @@map("tickets")
