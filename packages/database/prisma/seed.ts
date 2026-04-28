@@ -4,7 +4,8 @@ import * as crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
-const APP_SECRET = 'my_pos_offline_secret_key_2026';
+const APP_SECRET = process.env.APP_SECRET!;
+
 
 async function main() {
   console.log('🌱 Starting seed...');
