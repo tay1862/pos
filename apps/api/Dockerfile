@@ -26,6 +26,9 @@ FROM node:20-alpine
 
 WORKDIR /usr/src/app
 
+# Install ts-node and typescript globally for seeding
+RUN npm install -g ts-node typescript
+
 # Copy package files
 COPY package.json package-lock.json ./
 COPY apps/api/package.json ./apps/api/
@@ -38,6 +41,9 @@ RUN npm ci --only=production
 COPY --from=builder /usr/src/app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /usr/src/app/node_modules/@prisma/client ./node_modules/@prisma/client
 
+# Copy the database package (including schema and seed script)
+COPY --from=builder /usr/src/app/packages/database ./packages/database
+
 # Copy built application
 COPY --from=builder /usr/src/app/apps/api/dist ./apps/api/dist
 
@@ -45,6 +51,8 @@ WORKDIR /usr/src/app/apps/api
 
 # Create a non-root user for security
 RUN addgroup -S pgroup && adduser -S puser -G pgroup
+# Grant puser access to the app directory so they can run the seed if needed
+RUN chown -R puser:pgroup /usr/src/app
 USER puser
 
 EXPOSE 3000
